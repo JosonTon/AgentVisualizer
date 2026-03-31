@@ -6,6 +6,8 @@ A real-time 3D visualization tool that renders AI coding agent activity as a cyb
 
 The tool reads Claude Code's local JSONL session logs (`~/.claude/`) — no API calls, no subscriptions required.
 
+> This entire project — backend, frontend, 3D rendering, FUI effects, and this README — was built by [Claude Code](https://claude.ai/claude-code) (claude-opus-4-6). The human provided the vision and feedback; Claude wrote every line of code.
+
 ## Features
 
 - **3D Code City** — Files map to buildings via squarified treemap layout. Height = file size, color = directory-based spectrum subdivision
