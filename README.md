@@ -1,73 +1,118 @@
-# React + TypeScript + Vite
+# AgentVisualizer
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+A real-time 3D visualization tool that renders AI coding agent activity as a cyberpunk cityscape. Watch Claude Code (or other AI agents) work on your codebase — files become glowing wireframe buildings, tool calls light up as FUI callout markers, and agent movements trace arc trails across the city.
 
-Currently, two official plugins are available:
+**Zero cost. Zero tokens. Purely local.**
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+The tool reads Claude Code's local JSONL session logs (`~/.claude/`) — no API calls, no subscriptions required.
 
-## React Compiler
+## Features
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+- **3D Code City** — Files map to buildings via squarified treemap layout. Height = file size, color = directory-based spectrum subdivision
+- **Real-time Agent Tracking** — Watch agents read, write, edit, and search files with FUI-style callout markers and tool-colored indicators
+- **Multi-Agent / Multi-Session** — Each agent and subagent gets an independent marker with collision avoidance physics. Session badges distinguish concurrent Claude Code instances
+- **Transition Trails** — Animated bezier arc trails with flowing particles show agent movement between files
+- **Special Zones** — Plan file operations visualized on a dedicated platform; Bash/system commands on a stylized PC model
+- **Dynamic City** — Buildings appear and grow as agents create and modify files
+- **Agent Lifecycle** — Markers auto-fade when agents stop working (30s timeout)
+- **Cyberpunk Aesthetic** — Matrix rain particles, holographic grid, bloom post-processing, Orbitron font, scan-line effects
 
-## Expanding the ESLint configuration
+## Quick Start
 
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
+```bash
+# Clone and install
+git clone https://github.com/JosonTon/AgentVisualizer.git
+cd AgentVisualizer
+npm install
 
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
-
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+# Start (launches backend + frontend dev server)
+npm run dev
 ```
 
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
+Or on Windows, double-click `start.bat`.
 
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
+Open `http://localhost:5173`, enter a repo path that has Claude Code session history, and watch.
 
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+## How It Works
+
 ```
+~/.claude/projects/ (JSONL logs)
+        |
+        v
+  [Node.js Server]  -- chokidar watches for new JSONL lines
+        |
+        v
+  [WebSocket Push]   -- real-time AgentEvent stream
+        |
+        v
+  [React + Three.js] -- 3D city rendering + FUI markers
+```
+
+1. **Backend** scans `~/.claude/projects/<encoded-repo-path>/` for session JSONL files
+2. **chokidar** watches for file changes, reads only new lines (byte offset tracking)
+3. **JSONL parser** extracts `tool_use` entries (Read, Write, Edit, Bash, Glob, Grep...) into `AgentEvent` objects
+4. **WebSocket** pushes events to the browser in real-time
+5. **React Three Fiber** renders the 3D city with buildings, agent markers, and trails
+
+## Tech Stack
+
+| Layer | Technology |
+|-------|-----------|
+| 3D Rendering | React Three Fiber + drei + postprocessing |
+| Frontend | React 19 + TypeScript + Zustand |
+| Backend | Express + WebSocket (ws) + chokidar |
+| Build | Vite (frontend) + tsx (backend) |
+
+## Data Source
+
+AgentVisualizer reads Claude Code's local session logs:
+
+- **Session metadata**: `~/.claude/sessions/<pid>.json`
+- **JSONL logs**: `~/.claude/projects/<encoded-path>/<sessionId>.jsonl`
+- **Subagent logs**: `~/.claude/projects/<path>/<sessionId>/subagents/agent-*.jsonl`
+
+Path encoding: `D:\Projects\MyApp` -> `D--Projects-MyApp`
+
+No data is sent anywhere — everything stays local.
+
+## Project Structure
+
+```
+AgentVisualizer/
+├── server/                  # Node.js backend
+│   ├── index.ts             # Express + WebSocket server (port 3888)
+│   ├── routes/              # REST API (repo tree, sessions, history)
+│   └── services/            # JSONL parsing, file watching, session discovery
+├── src/                     # React frontend (Vite)
+│   ├── components/
+│   │   ├── city/            # 3D scene (buildings, markers, trails, zones)
+│   │   ├── dashboard/       # Side panel (agent list, event log)
+│   │   ├── playback/        # Timeline controls
+│   │   └── repo/            # Repo selector
+│   ├── stores/              # Zustand state (repo, agents, playback)
+│   ├── hooks/               # WebSocket connection, playback logic
+│   └── lib/                 # Layout algorithm, colors, API client
+├── shared/                  # Shared TypeScript types
+└── start.bat                # Windows launcher
+```
+
+## API
+
+```
+GET  /api/repo/tree?path=<repo>     # File tree scan
+GET  /api/sessions?repoPath=<repo>  # Claude sessions for this repo
+GET  /api/history?repoPath=<repo>   # Recorded history events
+POST /api/watch                     # Start watching repo JSONL files
+POST /api/watch/stop                # Stop watching
+
+WebSocket ws://localhost:3888/ws    # Real-time event stream
+```
+
+## Requirements
+
+- Node.js 18+
+- Claude Code CLI (for generating the JSONL logs to visualize)
+
+## License
+
+[MIT](LICENSE)
