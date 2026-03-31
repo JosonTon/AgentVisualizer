@@ -1,7 +1,16 @@
 import { useRef, useMemo } from 'react';
 import { useFrame } from '@react-three/fiber';
-import * as THREE from 'three';
-import type { Mesh } from 'three';
+import {
+  Vector3,
+  QuadraticBezierCurve3,
+  BufferGeometry,
+  Line,
+  LineBasicMaterial,
+  AdditiveBlending,
+  Points,
+  PointsMaterial,
+  BufferAttribute,
+} from 'three';
 
 interface AgentTrailProps {
   from: [number, number, number];
@@ -10,74 +19,78 @@ interface AgentTrailProps {
   startTime: number;
 }
 
-const PARTICLE_COUNT = 8;
-const PARTICLE_SIZE = 0.06;
+const PARTICLE_COUNT = 6;
 const TRAIL_DURATION = 8;
 
 export function AgentTrail({ from, to, color, startTime }: AgentTrailProps) {
-  const particleRefs = useRef<(Mesh | null)[]>([]);
+  const lineRef = useRef<Line>(null);
+  const pointsRef = useRef<Points>(null);
 
-  const { curve, lineObject } = useMemo(() => {
-    const start = new THREE.Vector3(...from);
-    const end = new THREE.Vector3(...to);
+  const { curve, lineObj, pointsObj, posAttr } = useMemo(() => {
+    const start = new Vector3(...from);
+    const end = new Vector3(...to);
     const distance = start.distanceTo(end);
-    const mid = new THREE.Vector3().addVectors(start, end).multiplyScalar(0.5);
+    const mid = new Vector3().addVectors(start, end).multiplyScalar(0.5);
     mid.y = Math.max(start.y, end.y) + distance * 0.4;
 
-    const c = new THREE.QuadraticBezierCurve3(start, mid, end);
-    const points = c.getPoints(64);
-    const geometry = new THREE.BufferGeometry().setFromPoints(points);
-    const material = new THREE.LineBasicMaterial({
+    const c = new QuadraticBezierCurve3(start, mid, end);
+
+    // Line
+    const lineGeo = new BufferGeometry().setFromPoints(c.getPoints(32));
+    const lineMat = new LineBasicMaterial({
       color,
       transparent: true,
       opacity: 0.4,
-      blending: THREE.AdditiveBlending,
+      blending: AdditiveBlending,
       depthWrite: false,
     });
-    const line = new THREE.Line(geometry, material);
+    const line = new Line(lineGeo, lineMat);
 
-    return { curve: c, lineObject: line };
+    // Points (instead of 6 individual sphere meshes)
+    const posArr = new Float32Array(PARTICLE_COUNT * 3);
+    const pointGeo = new BufferGeometry();
+    const attr = new BufferAttribute(posArr, 3);
+    pointGeo.setAttribute('position', attr);
+    const pointMat = new PointsMaterial({
+      color,
+      size: 0.12,
+      transparent: true,
+      opacity: 1,
+      blending: AdditiveBlending,
+      depthWrite: false,
+      sizeAttenuation: true,
+    });
+    const pts = new Points(pointGeo, pointMat);
+
+    return { curve: c, lineObj: line, pointsObj: pts, posAttr: attr };
   }, [from, to, color]);
 
   useFrame(({ clock }) => {
     const elapsed = clock.elapsedTime - startTime;
     const opacity = Math.max(0, 1 - elapsed / TRAIL_DURATION);
 
-    const lineMat = lineObject.material as THREE.LineBasicMaterial;
-    lineMat.opacity = opacity * 0.4;
+    if (lineRef.current) {
+      (lineRef.current.material as LineBasicMaterial).opacity = opacity * 0.4;
+    }
 
-    for (let i = 0; i < PARTICLE_COUNT; i++) {
-      const mesh = particleRefs.current[i];
-      if (!mesh) continue;
-
-      const t = ((elapsed * 0.8 + i / PARTICLE_COUNT) % 1);
-      const pos = curve.getPoint(t);
-      mesh.position.copy(pos);
-
-      const mat = mesh.material as THREE.MeshBasicMaterial;
-      mat.opacity = opacity * (1 - t * 0.5);
+    if (pointsRef.current) {
+      (pointsRef.current.material as PointsMaterial).opacity = opacity;
+      const arr = posAttr.array as Float32Array;
+      for (let i = 0; i < PARTICLE_COUNT; i++) {
+        const t = ((elapsed * 0.8 + i / PARTICLE_COUNT) % 1);
+        const pos = curve.getPoint(t);
+        arr[i * 3] = pos.x;
+        arr[i * 3 + 1] = pos.y;
+        arr[i * 3 + 2] = pos.z;
+      }
+      posAttr.needsUpdate = true;
     }
   });
 
   return (
     <group>
-      <primitive object={lineObject} />
-
-      {Array.from({ length: PARTICLE_COUNT }, (_, i) => (
-        <mesh
-          key={i}
-          ref={(el) => { particleRefs.current[i] = el; }}
-        >
-          <sphereGeometry args={[PARTICLE_SIZE, 6, 6]} />
-          <meshBasicMaterial
-            color={color}
-            transparent
-            opacity={1}
-            blending={THREE.AdditiveBlending}
-            depthWrite={false}
-          />
-        </mesh>
-      ))}
+      <primitive object={lineObj} ref={lineRef} />
+      <primitive object={pointsObj} ref={pointsRef} />
     </group>
   );
 }

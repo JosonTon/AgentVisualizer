@@ -158,6 +158,7 @@ export function RepoSelector() {
                 <div
                   key={r}
                   className="holo-card"
+                  onClick={() => { setInput(r); openRepo(r); }}
                   style={{
                     display: 'flex',
                     alignItems: 'center',
@@ -169,7 +170,6 @@ export function RepoSelector() {
                   <span
                     className="mono"
                     style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
-                    onClick={() => { setInput(r); openRepo(r); }}
                   >
                     {r}
                   </span>

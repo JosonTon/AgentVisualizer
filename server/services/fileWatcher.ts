@@ -1,4 +1,4 @@
-import { open, stat as fsStat } from 'fs/promises';
+import { open, stat as fsStat, readFile } from 'fs/promises';
 import { statSync } from 'fs';
 import { watch } from 'chokidar';
 import type { FSWatcher } from 'chokidar';
@@ -9,18 +9,38 @@ import type { AgentEvent } from '../../shared/types.js';
 const offsets = new Map<string, number>();
 let watcher: FSWatcher | null = null;
 
-function extractAgentInfo(filePath: string): { agentId: string; agentType: string } {
+const agentMetaCache = new Map<string, { agentId: string; agentType: string }>();
+
+async function extractAgentInfo(filePath: string): Promise<{ agentId: string; agentType: string }> {
+  if (agentMetaCache.has(filePath)) return agentMetaCache.get(filePath)!;
+
   const normalized = filePath.replace(/\\/g, '/');
   const subagentMatch = normalized.match(/subagents\/(agent-[^/]+)\.jsonl$/);
-  if (subagentMatch) {
-    return { agentId: subagentMatch[1], agentType: 'subagent' };
+  if (!subagentMatch) {
+    const info = { agentId: 'main', agentType: 'main' };
+    agentMetaCache.set(filePath, info);
+    return info;
   }
-  return { agentId: 'main', agentType: 'main' };
+
+  const agentId = subagentMatch[1];
+  let agentType = 'subagent';
+
+  // Try to read meta.json for richer type info
+  const metaPath = filePath.replace(/\.jsonl$/, '.meta.json');
+  try {
+    const meta = JSON.parse(await readFile(metaPath, 'utf-8'));
+    if (meta.agentType) agentType = meta.agentType;
+    if (meta.description) agentType = `${meta.agentType || 'agent'}`;
+  } catch { /* no meta file */ }
+
+  const info = { agentId, agentType };
+  agentMetaCache.set(filePath, info);
+  return info;
 }
 
 async function readNewLines(filePath: string, onEvent: (event: AgentEvent) => void): Promise<void> {
   const currentOffset = offsets.get(filePath) ?? 0;
-  const { agentId, agentType } = extractAgentInfo(filePath);
+  const { agentId, agentType } = await extractAgentInfo(filePath);
 
   let fh;
   try {
@@ -67,15 +87,28 @@ export function startWatching(repoPath: string, onEvent: (event: AgentEvent) => 
     interval: 1500,
   });
 
+  // Track which files existed before watcher was ready
+  const preExisting = new Set<string>();
+  let isReady = false;
+
   watcher.on('add', (filePath: string) => {
     if (!filePath.endsWith('.jsonl')) return;
-    console.log('[FileWatcher] File detected:', filePath.slice(-60));
-    // Start from end of file so we only get new events going forward
-    try {
-      const s = statSync(filePath);
-      offsets.set(filePath, s.size);
-    } catch {
+    const isSubagent = filePath.replace(/\\/g, '/').includes('/subagents/');
+    console.log('[FileWatcher] File detected:', isSubagent ? '[subagent]' : '[main]', filePath.slice(-60));
+
+    if (!isReady) {
+      // Pre-existing file: skip to end (only watch for new content)
+      preExisting.add(filePath);
+      try {
+        const s = statSync(filePath);
+        offsets.set(filePath, s.size);
+      } catch {
+        offsets.set(filePath, 0);
+      }
+    } else {
+      // Newly created file (e.g., new background agent): read from beginning
       offsets.set(filePath, 0);
+      void readNewLines(filePath, onEvent);
     }
   });
 
@@ -90,7 +123,8 @@ export function startWatching(repoPath: string, onEvent: (event: AgentEvent) => 
   });
 
   watcher.on('ready', () => {
-    console.log('[FileWatcher] Ready and watching for changes');
+    isReady = true;
+    console.log(`[FileWatcher] Ready. Tracking ${preExisting.size} existing files, watching for new ones`);
   });
 }
 
@@ -99,5 +133,6 @@ export function stopWatching(): void {
     void watcher.close();
     watcher = null;
     offsets.clear();
+    agentMetaCache.clear();
   }
 }

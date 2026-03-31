@@ -7,7 +7,7 @@ import type { ActiveAgent } from '../../stores/agentStore';
 import { computeCityLayout } from '../../lib/cityLayout';
 import type { BuildingData } from '../../lib/cityLayout';
 import { getToolColor } from './AgentBeam';
-import { Building } from './Building';
+import { InstancedBuildings } from './InstancedBuildings';
 import { AgentMarkerSystem } from './AgentMarkerSystem';
 import type { AgentMarkerData } from './AgentMarkerSystem';
 import { AgentTrail } from './AgentTrail';
@@ -197,13 +197,7 @@ export function CityRenderer() {
       <MatrixRain />
       <AmbientParticles />
 
-      {buildings.map((b) => (
-        <Building
-          key={b.filePath}
-          data={b}
-          highlight={activeFiles.has(b.filePath)}
-        />
-      ))}
+      <InstancedBuildings buildings={buildings} activeFiles={activeFiles} />
 
       {/* FUI Agent Marker System with collision avoidance */}
       <AgentMarkerSystem agents={markerAgents} />
